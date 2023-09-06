@@ -1,38 +1,45 @@
 package com.hum;
 
 import java.io.IOException;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.concurrent.*;
 
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.*;
+import org.apache.http.conn.ssl.NoopHostnameVerifier;
+import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
+import org.apache.http.conn.ssl.X509HostnameVerifier;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
-import org.apache.http.util.EntityUtils;
+import org.apache.http.ssl.SSLContexts;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.concurrent.TimeUnit;
+import javax.net.ssl.SSLContext;
 
 public class RequestExecutor {
 
     private static final Logger logger = LogManager.getLogger();
-    private final DateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy:HH:mm:ss");
-
-    private final ScheduledExecutorService scheduler;
-    private final Float ratio;
+    private final DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy-HH:mm:ss");
     private final Integer scaleLoadWholePart;
     private final Float fractionalPart;
     private final boolean isScaleLoad;
-    private final boolean isSpeedChanged;
+    private final ThreadPoolExecutor requestExecutor;
+    private final CloseableHttpClient httpClient;
 
-    public RequestExecutor(Float ratio, Float scaleLoad) {
-        this.scheduler = Executors.newScheduledThreadPool(1);
-        this.ratio = ratio;
+    public RequestExecutor(Float scaleLoad, int requestThreads, int timeout, boolean ignoreSsl) {
+        this.requestExecutor = new ThreadPoolExecutor(
+                requestThreads,
+                requestThreads,
+                60L,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>()
+        );
 
-        this.isSpeedChanged = ratio != null;
+        this.httpClient = getHttpClient(timeout, ignoreSsl);
 
         if (scaleLoad != null) {
             this.scaleLoadWholePart = scaleLoad.intValue();
@@ -45,35 +52,100 @@ public class RequestExecutor {
         }
     }
 
-    public void executeRequest(LogEntry logEntry) {
-        long delay = System.currentTimeMillis() - logEntry.getRequestTime();
+    private CloseableHttpClient getHttpClient(int timeout, boolean ignoreSsl) {
+        try {
+            if (ignoreSsl) {
+                SSLContext sslContext = SSLContexts.custom()
+                        .loadTrustMaterial(new TrustSelfSignedStrategy())
+                        .build();
 
-        if (isSpeedChanged) delay *= ratio;
+                RequestConfig requestConfig = RequestConfig.custom()
+                        .setConnectTimeout(timeout * 1000)
+                        .setConnectionRequestTimeout(timeout * 1000)
+                        .setSocketTimeout(timeout * 1000)
+                        .build();
 
-        scheduler.schedule(() -> {
-            if (isScaleLoad) {
-                for (int i = 0; i < scaleLoadWholePart; i++) sendRequest(logEntry);
-
-                if (Math.random() < fractionalPart) sendRequest(logEntry);
+                return HttpClients.custom()
+                        .setSslcontext(sslContext)
+                        .setHostnameVerifier((X509HostnameVerifier) NoopHostnameVerifier.INSTANCE)
+                        .setDefaultRequestConfig(requestConfig)
+                        .build();
             } else {
-                sendRequest(logEntry);
+                RequestConfig requestConfig = RequestConfig.custom()
+                        .setConnectTimeout(timeout * 1000)
+                        .setConnectionRequestTimeout(timeout * 1000)
+                        .setSocketTimeout(timeout * 1000)
+                        .build();
+
+                return HttpClients.custom()
+                        .setDefaultRequestConfig(requestConfig)
+                        .build();
             }
-        }, delay, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create HttpClient", e);
+        }
+    }
+
+    public void executeRequest(LogEntry logEntry) {
+        if (isScaleLoad) {
+            for (int i = 0; i < scaleLoadWholePart; i++) sendRequest(logEntry);
+
+            if (Math.random() < fractionalPart) sendRequest(logEntry);
+        } else {
+            sendRequest(logEntry);
+        }
     }
 
     private void sendRequest(LogEntry logEntry) {
+        requestExecutor.execute(() -> {
+                    String timeNow = dateFormat.format(LocalDateTime.now());
+                    long timeNowMills = System.currentTimeMillis();
+                    LocalDateTime originalTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(logEntry.getRequestTime()), ZoneId.systemDefault());
+
+                    try {
+                        TTFBResponseHandler responseHandler = new TTFBResponseHandler();
+                        CloseableHttpResponse response = httpClient.execute(logEntry.getHttpRequestBase(), responseHandler);
+
+                        logger.info("{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                                logEntry.getStatusCode(),
+                                response.getStatusLine().getStatusCode(),
+                                dateFormat.format(originalTime),
+                                timeNow,
+                                logEntry.getResponseTime(),
+                                responseHandler.getTtfb(),
+                                logEntry.getEndpoint()
+                        );
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        logger.info("{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                                logEntry.getStatusCode(),
+                                500,
+                                dateFormat.format(originalTime),
+                                timeNow,
+                                logEntry.getResponseTime(),
+                                (float) (System.currentTimeMillis() - timeNowMills) / 1000,
+                                logEntry.getEndpoint()
+                        );
+                    }
+                }
+        );
+    }
+
+    public void shutDown() {
+        requestExecutor.shutdown();
         try {
-            CloseableHttpClient httpClient = HttpClients.createDefault();
+            if (!requestExecutor.awaitTermination(120, TimeUnit.SECONDS)) {
+                requestExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            requestExecutor.shutdownNow();
+        }
 
-            long startTime = System.currentTimeMillis();
-            TTFBResponseHandler responseHandler = new TTFBResponseHandler(startTime);
-            CloseableHttpResponse response = httpClient.execute(logEntry.getHttpRequestBase(), responseHandler);
-
-            logger.info("{}\t{}\t{}\t{}\t{}\t{}\t{}", logEntry.getStatusCode(), response.getStatusLine().getStatusCode(), dateFormat.format(new Date(logEntry.getRequestTime())), dateFormat.format(new Date()), logEntry.getResponseTime(), responseHandler.getTtfb(), logEntry.getEndpoint());
-
-            EntityUtils.consume(response.getEntity());
+        try {
+            httpClient.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
     }
+
 }

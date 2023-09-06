@@ -1,30 +1,26 @@
 package com.hum;
 
 import org.apache.http.HttpResponse;
-import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.message.BasicHttpResponse;
-
-import java.io.IOException;
 
 
 public class TTFBResponseHandler implements ResponseHandler<CloseableHttpResponse> {
 
     private final long startTime;
-    private long ttfb;
+    private float ttfb;
 
-    public TTFBResponseHandler(long startTime) {
-        this.startTime = startTime;
+    public TTFBResponseHandler() {
+        this.startTime = System.currentTimeMillis();
     }
 
-    public long getTtfb() {
+    public float getTtfb() {
         return ttfb;
     }
 
     @Override
     public CloseableHttpResponse handleResponse(HttpResponse httpResponse) {
-        this.ttfb = System.currentTimeMillis() - this.startTime;
+        this.ttfb = (float) (System.currentTimeMillis() - this.startTime) / 1000;
         return (CloseableHttpResponse) httpResponse;
     }
 }

@@ -7,25 +7,25 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 public class Arguments {
     private final Path nginxLogPath;
     private final String logFormat;
-    private final SimpleDateFormat formatTime;
+    private final DateTimeFormatter formatTime;
     private final String destinationHost;
-    private final Path resultFilePath;
+    private final String httpProtocol;
     private final Float speed;
     private final Float scaleLoad;
     private final Long startTimestamp;
     private final int timeout;
+    private final Integer parserThreads;
+    private final Integer requestsThreads;
     private final boolean ignoreSsl;
-    private final boolean isStats;
-    private final boolean isWriteToFile;
     private final String username;
     private final String password;
 
@@ -40,84 +40,107 @@ public class Arguments {
             System.exit(0);
         }
 
-        String defaultFormatTime = "\"[$time_local]\" \"$request\" \"$status\" \"$remote_addr\" \"$http_referer\" \"$http_user_agent\" \"$request_time\"";
+        String defaultFormatTime = "\"[$requestTime]\" \"$requestUrl\" \"$statusCode\" \"$refererHeader\" \"$userAgentHeader\" \"$destinationHost\" \"$responseTime\"";
 
-        this.nginxLogPath = Paths.get(new URI(cmd.getOptionValue("nginxLogPath")));
+        this.nginxLogPath = Paths.get(cmd.getOptionValue("nginxLogPath"));
         this.logFormat = cmd.hasOption("logFormat") ? cmd.getOptionValue("logFormat") : defaultFormatTime;
-        this.formatTime = cmd.hasOption("formatTime") ? new SimpleDateFormat(cmd.getOptionValue("formatTime")) : new SimpleDateFormat("dd/MMM/yyyy:HH:mm:ss Z");
+        this.formatTime = cmd.hasOption("formatTime") ? DateTimeFormatter.ofPattern(cmd.getOptionValue("formatTime"), Locale.ENGLISH) : DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss Z", Locale.ENGLISH);
         this.destinationHost = cmd.hasOption("destinationHost") ? cmd.getOptionValue("destinationHost") : null;
-        this.resultFilePath = cmd.hasOption("resultFilePath") ? Paths.get(cmd.getOptionValue("resultFilePath")) : Paths.get("nginx.log");
+        this.httpProtocol = cmd.hasOption("httpProtocol") ? cmd.getOptionValue("httpProtocol") : "https";
+        Path resultFilePath = cmd.hasOption("resultFilePath") ? Paths.get(cmd.getOptionValue("resultFilePath")) : Paths.get("nginx.log");
         this.speed = cmd.hasOption("speed") ? Float.parseFloat(cmd.getOptionValue("speed")) : null;
         this.scaleLoad = cmd.hasOption("scaleLoad") ? Float.parseFloat(cmd.getOptionValue("scaleLoad")) : null;
         this.startTimestamp = cmd.hasOption("startTimestamp") ? Long.parseLong(cmd.getOptionValue("startTimestamp")) : null;
         this.timeout = cmd.hasOption("timeout") ? Integer.parseInt(cmd.getOptionValue("timeout")) : 30;
-        this.ignoreSsl = cmd.hasOption("ignoreSsl") && Boolean.parseBoolean(cmd.getOptionValue("ignoreSsl"));
-        this.isStats = cmd.hasOption("isStats") && Boolean.parseBoolean(cmd.getOptionValue("isStats"));
-        this.isWriteToFile = !cmd.hasOption("isWriteToFile") || Boolean.parseBoolean(cmd.getOptionValue("isWriteToFile"));
+        this.parserThreads = cmd.hasOption("parserThreads") ? Integer.parseInt(cmd.getOptionValue("parserThreads")) : Math.max(Runtime.getRuntime().availableProcessors(), 8);
+        this.requestsThreads = cmd.hasOption("requestsThreads") ? Integer.parseInt(cmd.getOptionValue("requestsThreads")) : Math.max(Runtime.getRuntime().availableProcessors(), 8);
+        this.ignoreSsl = cmd.hasOption("ignoreSsl");
         this.username = cmd.hasOption("username") ? cmd.getOptionValue("username") : null;
         this.password = cmd.hasOption("password") ? cmd.getOptionValue("password") : null;
 
-        System.setProperty("logFilePath", this.resultFilePath.toString());
-        System.setProperty("logToFile", Boolean.toString(this.isWriteToFile));
-        System.setProperty("logToConsole", Boolean.toString(this.isStats));
+        System.setProperty("logFilePath", resultFilePath.toString());
+
+        if (cmd.hasOption("disableWriteToFile")) {
+            System.setProperty("fileLogLevel", "OFF");
+        } else {
+            System.setProperty("fileLogLevel", "INFO");
+        }
+
+        if (cmd.hasOption("disableStats")) {
+            System.setProperty("consoleLogLevel", "OFF");
+        } else {
+            System.setProperty("consoleLogLevel", "INFO");
+        }
     }
 
     private static Options getOptions() {
         Options options = new Options();
 
-        Option filePath = new Option("nginxLogPath", true, "Path to the nginx log file");
-        filePath.setRequired(true);
-        options.addOption(filePath);
+        Option nginxLogPath = new Option(null, "nginxLogPath", true, "Path to the nginx log file");
+        nginxLogPath.setRequired(true);
+        options.addOption(nginxLogPath);
 
-        Option format = new Option("logFormat", true, "Format of the Nginx log structure (default: \"[$requestTime]\" \"$request\" \"$statusCode\" \"$requestHost\" \"$refererHeader\" \"$userAgentHeader\" \"$responseTime\")");
-        format.setRequired(false);
-        options.addOption(format);
+        Option logFormat = new Option(null, "logFormat", true, "Format of the Nginx log structure (default: \"[$requestTime]\" \"$requestUrl\" \"$statusCode\" \"$refererHeader\" \"$userAgentHeader\" \"$destinationHost\" \"$responseTime\")");
+        logFormat.setRequired(false);
+        options.addOption(logFormat);
 
-        Option formatTime = new Option("formatTime", true, "Nginx log time format (default: \"DD/MMM/YYYY:HH:mm:ss Z\")");
+        Option formatTime = new Option(null, "formatTime", true, "Nginx log time format (default: \"dd/MMM/yyyy:HH:mm:ss Z\")");
         formatTime.setRequired(false);
         options.addOption(formatTime);
 
-        Option prefix = new Option("destinationHost", true, "Host to send requests");
-        prefix.setRequired(false);
-        options.addOption(prefix);
+        Option destinationHost = new Option(null, "destinationHost", true, "Host to send requests");
+        destinationHost.setRequired(false);
+        options.addOption(destinationHost);
 
-        Option logFile = new Option("resultFilePath", true, "Name of the file to save the result (default: nginx.log)");
-        logFile.setRequired(false);
-        options.addOption(logFile);
+        Option httpProtocol = new Option(null, "httpProtocol", true, "HTTP protocol for requests (default: https)");
+        httpProtocol.setRequired(false);
+        options.addOption(httpProtocol);
 
-        Option ratio = new Option("speed", true, "Acceleration/deceleration of request sending speed, eg: 2, 0.5 (default: 1)");
-        ratio.setRequired(false);
-        options.addOption(ratio);
+        Option resultFilePath = new Option(null, "resultFilePath", true, "Name of the file to save the result (default: nginx.log)");
+        resultFilePath.setRequired(false);
+        options.addOption(resultFilePath);
 
-        Option scaleLoad = new Option("scaleLoad", true, "Scale load (default: 1.0)");
+        Option speed = new Option(null, "speed", true, "Acceleration/deceleration of request sending speed, eg: 2, 0.5 (default: 1)");
+        speed.setRequired(false);
+        options.addOption(speed);
+
+        Option scaleLoad = new Option(null, "scaleLoad", true, "Scale load (default: 1.0)");
         scaleLoad.setRequired(false);
         options.addOption(scaleLoad);
 
-        Option startTimestamp = new Option("startTimestamp", true, "Start replaying the log from a specific timestamp");
+        Option startTimestamp = new Option(null, "startTimestamp", true, "Start replaying the log from a specific timestamp");
         startTimestamp.setRequired(false);
         options.addOption(startTimestamp);
 
-        Option timeout = new Option("timeout", true, "Timeout for the requests  (default: 30)");
+        Option timeout = new Option(null, "timeout", true, "Timeout for the requests (default: 30)");
         timeout.setRequired(false);
         options.addOption(timeout);
 
-        Option skipSsl = new Option("ignoreSsl", false, "Ignore SSL (default: false)");
-        skipSsl.setRequired(false);
-        options.addOption(skipSsl);
+        Option parserThreads = new Option(null, "parserThreads", true, "Count of parser threads (default: Max cores count or 8)");
+        parserThreads.setRequired(false);
+        options.addOption(parserThreads);
 
-        Option isStats = new Option("isStats", false, "Display the execution progress in the console (default: false)");
-        isStats.setRequired(false);
-        options.addOption(isStats);
+        Option requestsThreads = new Option(null, "requestsThreads", true, "Count of requests threads (default: Max cores count or 8)");
+        requestsThreads.setRequired(false);
+        options.addOption(requestsThreads);
 
-        Option isWriteToFile = new Option("isWriteToFile", false, "Write results to file (default: true)");
-        isWriteToFile.setRequired(false);
-        options.addOption(isWriteToFile);
+        Option ignoreSsl = new Option(null, "ignoreSsl", false, "Ignore SSL (default: false)");
+        ignoreSsl.setRequired(false);
+        options.addOption(ignoreSsl);
 
-        Option username = new Option("username", true, "Username for basic auth");
+        Option disableStats = new Option(null, "disableStats", false, "Disable display the execution progress in the console (default: false)");
+        disableStats.setRequired(false);
+        options.addOption(disableStats);
+
+        Option disableWriteToFile = new Option(null, "disableWriteToFile", false, "Disable write results to file (default: false)");
+        disableWriteToFile.setRequired(false);
+        options.addOption(disableWriteToFile);
+
+        Option username = new Option(null, "username", true, "Username for basic auth");
         username.setRequired(false);
         options.addOption(username);
 
-        Option password = new Option("password", true, "Password for basic auth");
+        Option password = new Option(null, "password", true, "Password for basic auth");
         password.setRequired(false);
         options.addOption(password);
 
@@ -136,7 +159,7 @@ public class Arguments {
         return logFormat;
     }
 
-    public SimpleDateFormat getFormatTime() {
+    public DateTimeFormatter getFormatTime() {
         return formatTime;
     }
 
@@ -144,15 +167,15 @@ public class Arguments {
         return destinationHost;
     }
 
-    public Path getResultFilePath() {
-        return resultFilePath;
+    public String getHttpProtocol() {
+        return httpProtocol;
     }
 
-    public float getSpeed() {
+    public Float getSpeed() {
         return speed;
     }
 
-    public float getScaleLoad() {
+    public Float getScaleLoad() {
         return scaleLoad;
     }
 
@@ -164,12 +187,16 @@ public class Arguments {
         return timeout;
     }
 
-    public boolean isIgnoreSsl() {
-        return ignoreSsl;
+    public Integer getParserThreads() {
+        return parserThreads;
     }
 
-    public boolean isStats() {
-        return isStats;
+    public Integer getRequestsThreads() {
+        return requestsThreads;
+    }
+
+    public boolean isIgnoreSsl() {
+        return ignoreSsl;
     }
 
     public String getUsername() {

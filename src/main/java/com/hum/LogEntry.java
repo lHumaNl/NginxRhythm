@@ -3,12 +3,12 @@ package com.hum;
 import org.apache.http.client.methods.*;
 
 public class LogEntry {
-
     private final long requestTime;
     private final String endpoint;
     private final HttpRequestBase httpRequestBase;
     private final Integer statusCode;
     private final Float responseTime;
+    private long delay;
 
     public LogEntry(
             long requestTime,
@@ -19,7 +19,7 @@ public class LogEntry {
             String destinationHost,
             String refererHeader,
             String userAgentHeader) {
-        this.requestTime = requestTime;
+        this.requestTime = requestTime * 1000;
         this.endpoint = endpoint;
         this.httpRequestBase = createHttpRequest(method, destinationHost);
         this.statusCode = statusCode;
@@ -47,6 +47,14 @@ public class LogEntry {
 
     public Float getResponseTime() {
         return responseTime;
+    }
+
+    public long getDelay() {
+        return delay;
+    }
+
+    public void setDelay(long delay) {
+        this.delay = delay;
     }
 
     private HttpRequestBase createHttpRequest(String method, String destinationHost) {

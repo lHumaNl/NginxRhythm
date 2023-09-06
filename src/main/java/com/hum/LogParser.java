@@ -10,8 +10,8 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -20,17 +20,21 @@ import java.util.concurrent.TimeUnit;
 public class LogParser {
     private final Path filePath;
     private final String logFormat;
-    private final long startTimestamp;
+    private final Long startTimestamp;
     private final String destinationHost;
-    private final SimpleDateFormat dateFormat;
+    private final String httpProtocol;
+    private final DateTimeFormatter dateFormat;
+    private final ExecutorService executor;
     private final List<LogEntry> logEntries;
 
-    public LogParser(Path filePath, String logFormat, SimpleDateFormat formatTime, long startTimestamp, String destinationHost) {
+    public LogParser(Path filePath, String logFormat, DateTimeFormatter formatTime, Long startTimestamp, String destinationHost, String httpProtocol, int parserThreads) {
         this.filePath = filePath;
         this.logFormat = logFormat;
         this.startTimestamp = startTimestamp;
         this.destinationHost = destinationHost;
+        this.httpProtocol = httpProtocol;
         this.dateFormat = formatTime;
+        this.executor = Executors.newFixedThreadPool(parserThreads);
         logEntries = Collections.synchronizedList(new ArrayList<>());
 
         parseLog();
@@ -49,79 +53,74 @@ public class LogParser {
         try {
             reader = Files.newBufferedReader(filePath, StandardCharsets.UTF_8);
             csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withDelimiter(' ').withQuote('"').withNullString("-").withIgnoreSurroundingSpaces());
-            formatLogParser = new CSVParser(new CharArrayReader(logFormat.toCharArray()), CSVFormat.DEFAULT.withDelimiter(' ').withQuote('"').withNullString("-").withIgnoreSurroundingSpaces());
+            formatLogParser = new CSVParser(new CharArrayReader(this.logFormat.toCharArray()), CSVFormat.DEFAULT.withDelimiter(' ').withQuote('"').withNullString("-").withIgnoreSurroundingSpaces());
             logFormatFields = formatLogParser.getRecords().get(0);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
 
-        Integer requestTimeFieldId = null;
-        Integer requestFieldId = null;
-        Integer statusCodeFieldId = null;
-        Integer responseTimeFieldId = null;
-        Integer requestHostFieldId = null;
-        Integer refererHeaderFieldId = null;
-        Integer userAgentHeaderFieldId = null;
+        LogFormat logFormat = new LogFormat(logFormatFields);
 
-        for (int i = 0; i < logFormatFields.size(); i++) {
-            if (logFormatFields.get(i).contains("$requestTime")) requestTimeFieldId = i;
-            else if (logFormatFields.get(i).contains("$request")) requestFieldId = i;
-            else if (logFormatFields.get(i).contains("$statusCode")) statusCodeFieldId = i;
-            else if (logFormatFields.get(i).contains("$responseTime")) responseTimeFieldId = i;
-            else if (logFormatFields.get(i).contains("$requestHost")) requestHostFieldId = i;
-            else if (logFormatFields.get(i).contains("$refererHeader")) refererHeaderFieldId = i;
-            else if (logFormatFields.get(i).contains("$userAgentHeader")) userAgentHeaderFieldId = i;
+        System.out.println("Start parsing logs");
+
+        fillLogEntries(csvParser, logFormat);
+
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(120, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+                System.err.println("Shutdown threads is to long");
+                System.exit(1);
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            System.exit(1);
         }
 
-        fillLogEntries(
-                csvParser,
-                requestTimeFieldId,
-                requestFieldId,
-                statusCodeFieldId,
-                responseTimeFieldId,
-                requestHostFieldId,
-                refererHeaderFieldId,
-                userAgentHeaderFieldId
-        );
-
         logEntries.sort(Comparator.comparing(LogEntry::getRequestTime));
+        fillDelay();
+
+        System.out.println("Parsing logs finished");
     }
 
-    private void fillLogEntries(CSVParser csvParser,
-                                Integer requestTimeFieldId,
-                                Integer requestFieldId,
-                                Integer statusCodeFieldId,
-                                Integer responseTimeFieldId,
-                                Integer requestHostFieldId,
-                                Integer refererHeaderFieldId,
-                                Integer userAgentHeaderFieldId) {
-
-        int availableProcessors = Math.max(Runtime.getRuntime().availableProcessors(), 8);
-        ExecutorService executor = Executors.newFixedThreadPool(availableProcessors);
-
+    private void fillLogEntries(CSVParser csvParser, LogFormat logFormat) {
         for (CSVRecord csvRecord : csvParser) {
             executor.execute(() -> {
                 try {
-                    long requestTime = dateFormat.parse(csvRecord.get(requestTimeFieldId)).getTime();
+                    String dateString = getValueFromRow(csvRecord, logFormat.getRequestTimeFieldData());
+                    if (dateString == null) throw new RuntimeException();
 
-                    if (requestTime < startTimestamp) {
-                        return;
+                    long requestTime = ZonedDateTime.parse(dateString, dateFormat).toInstant().getEpochSecond();
+
+                    if (startTimestamp != null) {
+                        if (requestTime < startTimestamp) {
+                            return;
+                        }
                     }
 
-                    String request = csvRecord.get(requestFieldId);
+                    String request = getValueFromRow(csvRecord, logFormat.getRequestUrlFieldData());
+
+                    if (request == null || (request.split(" ").length < 2)) {
+                        throw new RuntimeException();
+                    }
+
                     String[] requestParts = request.split(" ");
                     String method = requestParts[0];
                     String endpoint = requestParts[1];
 
-                    Integer statusCode = getIntegerValue(getValueFromRow(csvRecord, statusCodeFieldId));
-                    Float responseTime = getFloatValue(getValueFromRow(csvRecord, responseTimeFieldId));
+                    Integer statusCode = getIntegerValue(getValueFromRow(csvRecord, logFormat.getStatusCodeFieldData()));
+                    Float responseTime = getFloatValue(getValueFromRow(csvRecord, logFormat.getResponseTimeFieldData()));
 
                     String destinationHost;
                     if (this.destinationHost != null) destinationHost = this.destinationHost;
-                    else destinationHost = getValueFromRow(csvRecord, requestHostFieldId);
+                    else destinationHost = getValueFromRow(csvRecord, logFormat.getDestinationHostFieldData());
 
-                    String refererHeader = getValueFromRow(csvRecord, refererHeaderFieldId);
-                    String userAgentHeader = getValueFromRow(csvRecord, userAgentHeaderFieldId);
+                    if (!destinationHost.contains("https://") && !destinationHost.contains("http://")) {
+                        destinationHost = httpProtocol + "://" + destinationHost;
+                    }
+
+                    String refererHeader = getValueFromRow(csvRecord, logFormat.getRefererHeaderFieldData());
+                    String userAgentHeader = getValueFromRow(csvRecord, logFormat.getUserAgentHeaderFieldData());
 
                     LogEntry logEntry = new LogEntry(
                             requestTime,
@@ -135,36 +134,37 @@ public class LogParser {
                     );
 
                     logEntries.add(logEntry);
-                } catch (ParseException e) {
+                } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
             });
         }
+    }
 
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(120, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-                System.err.println("Shutdown threads is to long");
-                System.exit(1);
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            e.printStackTrace();
-            System.exit(1);
+    private void fillDelay() {
+        long timeDiff = System.currentTimeMillis() - logEntries.get(0).getRequestTime();
+        long prevRespTime = System.currentTimeMillis();
+
+        for (LogEntry logEntry : logEntries) {
+            long delay = logEntry.getRequestTime() + timeDiff - prevRespTime;
+
+            logEntry.setDelay(delay);
+            prevRespTime = logEntry.getRequestTime() + timeDiff;
         }
     }
 
-    private static String getValueFromRow(CSVRecord csvRecord, Integer fieldId) {
-        if (fieldId == null) return null;
+    private static String getValueFromRow(CSVRecord csvRecord, FieldData fieldData) {
+        if (fieldData.getFieldId() == null) return null;
 
-        String valueFromRow = csvRecord.get(fieldId);
+        String valueFromRow = csvRecord.get(fieldData.getFieldId());
 
-        if (valueFromRow.equals("-") || valueFromRow.isEmpty() || valueFromRow.isBlank()) {
+        if (valueFromRow == null) return null;
+
+        if (valueFromRow.equals("-") || valueFromRow.isEmpty() || valueFromRow.equals(" ")) {
             return null;
         }
 
-        return valueFromRow;
+        return fieldData.substringByFormat(valueFromRow);
     }
 
     private static Integer getIntegerValue(String stringValue) {

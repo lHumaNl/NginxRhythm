@@ -1,12 +1,22 @@
-<File name="Log" fileName="${sys:logFilePath}" ignoreExceptions="false">
-    <PatternLayout pattern="%msg%n"/>
-    <Filters>
-        <PropertyFilter name="LogToFileFilter" onMatch="ACCEPT" onMismatch="DENY" key="logToFile" value="true"/>
-    </Filters>
-</File>
-<Console name="Console" target="SYSTEM_OUT">
-<PatternLayout pattern="%msg%n"/>
-<Filters>
-    <PropertyFilter name="LogToConsoleFilter" onMatch="ACCEPT" onMismatch="DENY" key="logToConsole" value="true"/>
-</Filters>
-</Console>
+<Configuration>
+    <Appenders>
+        <File name="FileAppender" fileName="${sys:logFilePath}" ignoreExceptions="false">
+            <Filters>
+                <ThresholdFilter level="${sys:fileLogLevel}" onMatch="ACCEPT" onMismatch="DENY" />
+            </Filters>
+            <PatternLayout pattern="%msg%n"/>
+        </File>
+        <Console name="ConsoleAppender" target="SYSTEM_OUT">
+            <Filters>
+                <ThresholdFilter level="${sys:consoleLogLevel}" onMatch="ACCEPT" onMismatch="DENY" />
+            </Filters>
+            <PatternLayout pattern="%msg%n"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="FileAppender"/>
+            <AppenderRef ref="ConsoleAppender"/>
+        </Root>
+    </Loggers>
+</Configuration>
