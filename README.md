@@ -31,6 +31,17 @@ java -jar NginxRhythm.jar [options]
 - `--password <password>`: Password for basic authentication.
 - `-h`, `--help`: Display help for the command.
 
+## Vars in log format
+- `$requestTime`: **(Required)** Time of request.
+- `$requestUrl`: **(Required)** HTTP method and endpoint.
+- `$statusCode`: Status code.
+- `$destinationHost`: Host.
+- `$refererHeader`: Referer header.
+- `$userAgentHeader`: User-Agent header.
+- `$responseTime`: Response time from Nginx to client.
+
+Other field may be filled by `"-"`
+
 ## Examples
 
 Parse a specific Nginx log file and send requests to a specified host:
