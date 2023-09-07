@@ -12,6 +12,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.ThreadPoolExecutor;
 
 public class Arguments {
     private final Path nginxLogPath;
@@ -25,6 +27,8 @@ public class Arguments {
     private final int timeout;
     private final Integer parserThreads;
     private final Integer requestsThreads;
+    private final int requestQueueCapacity;
+    private final RejectedExecutionHandler queuePolicy;
     private final boolean ignoreSsl;
     private final String username;
     private final String password;
@@ -60,8 +64,24 @@ public class Arguments {
         this.scaleLoad = cmd.hasOption("scaleLoad") ? Float.parseFloat(cmd.getOptionValue("scaleLoad")) : null;
         this.startTimestamp = cmd.hasOption("startTimestamp") ? Long.parseLong(cmd.getOptionValue("startTimestamp")) : null;
         this.timeout = cmd.hasOption("timeout") ? Integer.parseInt(cmd.getOptionValue("timeout")) : 30;
-        this.parserThreads = cmd.hasOption("parserThreads") ? Integer.parseInt(cmd.getOptionValue("parserThreads")) : Math.max(Runtime.getRuntime().availableProcessors(), 8);
-        this.requestsThreads = cmd.hasOption("requestsThreads") ? Integer.parseInt(cmd.getOptionValue("requestsThreads")) : Math.max(Runtime.getRuntime().availableProcessors(), 8);
+        this.parserThreads = cmd.hasOption("parserThreads") ? Integer.parseInt(cmd.getOptionValue("parserThreads")) : Math.max(Runtime.getRuntime().availableProcessors(), 16);
+        this.requestsThreads = cmd.hasOption("requestsThreads") ? Integer.parseInt(cmd.getOptionValue("requestsThreads")) : Math.max(Runtime.getRuntime().availableProcessors(), 16);
+        this.requestQueueCapacity = cmd.hasOption("requestQueueCapacity") ? Integer.parseInt(cmd.getOptionValue("requestQueueCapacity")) : 1000;
+
+        int queuePolicy = cmd.hasOption("queuePolicy") ? Integer.parseInt(cmd.getOptionValue("queuePolicy")) : 1;
+
+        if (queuePolicy == 0) {
+            this.queuePolicy = new ThreadPoolExecutor.AbortPolicy();
+        } else if (queuePolicy == 1) {
+            this.queuePolicy = new ThreadPoolExecutor.CallerRunsPolicy();
+        } else if (queuePolicy == 2) {
+            this.queuePolicy = new ThreadPoolExecutor.DiscardPolicy();
+        } else if (queuePolicy == 3) {
+            this.queuePolicy = new ThreadPoolExecutor.DiscardOldestPolicy();
+        } else {
+            throw new RuntimeException("Invalid queue policy");
+        }
+
         this.ignoreSsl = cmd.hasOption("ignoreSsl");
         this.username = cmd.hasOption("username") ? cmd.getOptionValue("username") : null;
         this.password = cmd.hasOption("password") ? cmd.getOptionValue("password") : null;
@@ -124,13 +144,21 @@ public class Arguments {
         timeout.setRequired(false);
         options.addOption(timeout);
 
-        Option parserThreads = new Option(null, "parserThreads", true, "Count of parser threads (default: Max cores count or 8)");
+        Option parserThreads = new Option(null, "parserThreads", true, "Count of parser threads (default: Max cores count or 16)");
         parserThreads.setRequired(false);
         options.addOption(parserThreads);
 
-        Option requestsThreads = new Option(null, "requestsThreads", true, "Count of requests threads (default: Max cores count or 8)");
+        Option requestsThreads = new Option(null, "requestsThreads", true, "Count of requests threads (default: Max cores count or 16)");
         requestsThreads.setRequired(false);
         options.addOption(requestsThreads);
+
+        Option requestQueueCapacity = new Option(null, "requestQueueCapacity", true, "Capacity of request queue (default: 1000)");
+        requestQueueCapacity.setRequired(false);
+        options.addOption(requestQueueCapacity);
+
+        Option queuePolicy = new Option(null, "queuePolicy", true, "Policy of request queue (AbortPolicy: 0, CallerRunsPolicy: 1, DiscardPolicy: 2, DiscardOldestPolicy: 3) (default: 1)");
+        queuePolicy.setRequired(false);
+        options.addOption(queuePolicy);
 
         Option ignoreSsl = new Option(null, "ignoreSsl", false, "Ignore SSL (default: false)");
         ignoreSsl.setRequired(false);
@@ -201,6 +229,14 @@ public class Arguments {
 
     public Integer getRequestsThreads() {
         return requestsThreads;
+    }
+
+    public int getRequestQueueCapacity() {
+        return requestQueueCapacity;
+    }
+
+    public RejectedExecutionHandler getQueuePolicy() {
+        return queuePolicy;
     }
 
     public boolean isIgnoreSsl() {

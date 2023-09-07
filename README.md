@@ -5,12 +5,12 @@ NginxRhythm is a utility to parse and simulate requests from an Nginx log file.
 ## Cloning the Project from Git
 
 1. **Clone the repository**:
-   - Open your terminal or command prompt.
-   - Run the following command with your repository URL:
+    - Open your terminal or command prompt.
+    - Run the following command with your repository URL:
 
    ```bash
    git clone https://github.com/lHumaNl/NginxRhythm.git
-   
+
 2. **Navigate to the project directory**:
    ```bash
    cd path/to/your/project
@@ -30,10 +30,10 @@ NginxRhythm is a utility to parse and simulate requests from an Nginx log file.
     - Click `OK` to open the project.
 
 2. **Build the Project**:
-   - Open the `Maven` tool window (usually located on the right side of the IDE).
-   - Expand the project's tree to see the `Lifecycle` section.
-   - Double-click on `clean` to clean the project, and then on `install` to build the project.
-   - After building, the fat-jar `NginxRhythm-{version}.jar` will appear in the `target` directory.
+    - Open the `Maven` tool window (usually located on the right side of the IDE).
+    - Expand the project's tree to see the `Lifecycle` section.
+    - Double-click on `clean` to clean the project, and then on `install` to build the project.
+    - After building, the fat-jar `NginxRhythm-{version}.jar` will appear in the `target` directory.
 
 ### Building with Maven CLI
 
@@ -66,8 +66,11 @@ java -jar NginxRhythm.jar [options]
 - `--scaleLoad <factor>`: Scale load. Default is `1.0`.
 - `--startTimestamp <timestamp>`: Start replaying the log from a specific timestamp.
 - `--timeout <seconds>`: Timeout for the requests in seconds. Default is `30`.
-- `--parserThreads <count>`: Count of parser threads. Default is the higher of available processor cores or `8`.
-- `--requestsThreads <count>`: Count of request threads. Default is the higher of available processor cores or `8`.
+- `--parserThreads <count>`: Count of parser threads. Default is the higher of available processor cores or `16`.
+- `--requestsThreads <count>`: Count of request threads. Default is the higher of available processor cores or `16`.
+- `--requestQueueCapacity <count>`: Capacity of request queue. Default is `1000`.
+- `--queuePolicy <count>`: Policy of request queue (AbortPolicy: `0`, CallerRunsPolicy: `1`, DiscardPolicy: `2`,
+  DiscardOldestPolicy: `3`). Default `1`.
 - `--ignoreSsl`: If specified, will ignore SSL. Default is `false`.
 - `--disableStats`: If specified, will disable displaying the execution progress in the console. Default is `false`.
 - `--disableWriteToFile`: If specified, will disable writing results to file. Default is `false`.

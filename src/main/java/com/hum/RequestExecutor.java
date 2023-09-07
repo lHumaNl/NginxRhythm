@@ -28,13 +28,14 @@ public class RequestExecutor {
     private final ThreadPoolExecutor requestExecutor;
     private final CloseableHttpClient httpClient;
 
-    public RequestExecutor(Float scaleLoad, int requestThreads, int timeout, boolean ignoreSsl) {
+    public RequestExecutor(Float scaleLoad, int requestThreads, int timeout, boolean ignoreSsl, int queueCapacity, RejectedExecutionHandler queuePolicy) {
         this.requestExecutor = new ThreadPoolExecutor(
                 requestThreads,
                 requestThreads,
-                120L,
+                0,
                 TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(250)
+                new LinkedBlockingQueue<>(queueCapacity),
+                queuePolicy
         );
 
         this.httpClient = getHttpClient(timeout, ignoreSsl);
@@ -84,7 +85,7 @@ public class RequestExecutor {
         }
     }
 
-    public void executeRequest(LogEntry logEntry) {
+    public void executeRequest(LogEntry logEntry) throws RuntimeException {
         if (isScaleLoad) {
             for (int i = 0; i < scaleLoadWholePart; i++) sendRequest(logEntry);
 
@@ -94,7 +95,7 @@ public class RequestExecutor {
         }
     }
 
-    private void sendRequest(LogEntry logEntry) {
+    private void sendRequest(LogEntry logEntry) throws RuntimeException {
         requestExecutor.execute(() -> {
                     String timeNow = dateFormat.format(LocalDateTime.now());
                     long timeNowMills = System.currentTimeMillis();
@@ -124,6 +125,8 @@ public class RequestExecutor {
                                 (float) (System.currentTimeMillis() - timeNowMills) / 1000,
                                 logEntry.getEndpoint()
                         );
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
                     }
                 }
         );
@@ -132,7 +135,7 @@ public class RequestExecutor {
     public void shutDown() {
         requestExecutor.shutdown();
         try {
-            if (!requestExecutor.awaitTermination(120, TimeUnit.SECONDS)) {
+            if (!requestExecutor.awaitTermination(600, TimeUnit.SECONDS)) {
                 requestExecutor.shutdownNow();
             }
         } catch (InterruptedException e) {

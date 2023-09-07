@@ -108,7 +108,7 @@ public class LogEntry {
             try {
                 uri = new URI(url);
             } catch (URISyntaxException ex) {
-                throw new RuntimeException();
+                throw new RuntimeException(ex);
             }
         }
         return uri;

@@ -83,6 +83,7 @@ public class LogParser {
         fillDelay();
 
         System.out.println("Parsing logs finished");
+        System.out.println("Count of requests to execute: " + logEntries.size());
     }
 
     private void fillLogEntries(CSVParser csvParser, LogFormat logFormat) {

@@ -6,7 +6,6 @@ import java.net.URISyntaxException;
 
 public class Main {
     public static void main(String[] args) {
-        RequestExecutor requestExecutor = null;
         try {
             Arguments arguments = new Arguments(args);
 
@@ -20,21 +19,27 @@ public class Main {
                     arguments.getParserThreads()
             );
 
-            requestExecutor = new RequestExecutor(
+            RequestExecutor requestExecutor = new RequestExecutor(
                     arguments.getScaleLoad(),
                     arguments.getRequestsThreads(),
                     arguments.getTimeout(),
-                    arguments.isIgnoreSsl()
+                    arguments.isIgnoreSsl(),
+                    arguments.getRequestQueueCapacity(),
+                    arguments.getQueuePolicy()
             );
 
             for (LogEntry logEntry : logParser.getLogEntries()) {
                 Thread.sleep(logEntry.getDelay());
-                requestExecutor.executeRequest(logEntry);
+                try {
+                    requestExecutor.executeRequest(logEntry);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
+
+            requestExecutor.shutDown();
         } catch (ParseException | URISyntaxException | InterruptedException | RuntimeException e) {
             e.printStackTrace();
-        } finally {
-            if (requestExecutor != null) requestExecutor.shutDown();
         }
     }
 }
