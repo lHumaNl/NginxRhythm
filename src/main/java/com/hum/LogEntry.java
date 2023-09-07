@@ -2,6 +2,9 @@ package com.hum;
 
 import org.apache.http.client.methods.*;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+
 public class LogEntry {
     private final long requestTime;
     private final String endpoint;
@@ -18,7 +21,7 @@ public class LogEntry {
             Float responseTime,
             String destinationHost,
             String refererHeader,
-            String userAgentHeader) {
+            String userAgentHeader) throws RuntimeException {
         this.requestTime = requestTime * 1000;
         this.endpoint = endpoint;
         this.httpRequestBase = createHttpRequest(method, destinationHost);
@@ -58,23 +61,56 @@ public class LogEntry {
     }
 
     private HttpRequestBase createHttpRequest(String method, String destinationHost) {
+        URI uri = getUri(destinationHost + endpoint);
+
+        if (uri == null) {
+            throw new RuntimeException();
+        }
+
         switch (method) {
             case "GET":
-                return new HttpGet(destinationHost + endpoint);
+                return new HttpGet(uri);
             case "POST":
-                return new HttpPost(destinationHost + endpoint);
+                return new HttpPost(uri);
             case "HEAD":
-                return new HttpHead(destinationHost + endpoint);
+                return new HttpHead(uri);
             case "PUT":
-                return new HttpPut(destinationHost + endpoint);
+                return new HttpPut(uri);
             case "OPTIONS":
-                return new HttpOptions(destinationHost + endpoint);
+                return new HttpOptions(uri);
             case "PATCH":
-                return new HttpPatch(destinationHost + endpoint);
+                return new HttpPatch(uri);
             case "DELETE":
-                return new HttpDelete(destinationHost + endpoint);
+                return new HttpDelete(uri);
             default:
                 throw new UnsupportedOperationException("HTTP method not supported: " + method);
         }
+    }
+
+    public static URI getUri(String url) {
+        URI uri;
+        try {
+            uri = new URI(url);
+        } catch (URISyntaxException e) {
+            url = url.replace("<", "%3C")
+                    .replace(">", "%3E")
+                    .replace("\"", "%22")
+                    .replace("#", "%23")
+                    .replace("{", "%7B")
+                    .replace("}", "%7D")
+                    .replace("|", "%7C")
+                    .replace("\\", "%5C")
+                    .replace("^", "%5E")
+                    .replace("~", "%7E")
+                    .replace("[", "%5B")
+                    .replace("]", "%5D")
+                    .replace("`", "%60");
+            try {
+                uri = new URI(url);
+            } catch (URISyntaxException ex) {
+                throw new RuntimeException();
+            }
+        }
+        return uri;
     }
 }

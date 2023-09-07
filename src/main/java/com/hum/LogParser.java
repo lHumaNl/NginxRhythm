@@ -27,7 +27,7 @@ public class LogParser {
     private final ExecutorService executor;
     private final List<LogEntry> logEntries;
 
-    public LogParser(Path filePath, String logFormat, DateTimeFormatter formatTime, Long startTimestamp, String destinationHost, String httpProtocol, int parserThreads) {
+    public LogParser(Path filePath, String logFormat, DateTimeFormatter formatTime, Long startTimestamp, String destinationHost, String httpProtocol, int parserThreads) throws RuntimeException {
         this.filePath = filePath;
         this.logFormat = logFormat;
         this.startTimestamp = startTimestamp;
@@ -44,7 +44,7 @@ public class LogParser {
         return logEntries;
     }
 
-    private void parseLog() {
+    private void parseLog() throws RuntimeException {
         Reader reader;
         CSVParser csvParser;
         CSVParser formatLogParser;
@@ -62,7 +62,6 @@ public class LogParser {
         LogFormat logFormat = new LogFormat(logFormatFields);
 
         System.out.println("Start parsing logs");
-
         fillLogEntries(csvParser, logFormat);
 
         executor.shutdown();
@@ -77,7 +76,10 @@ public class LogParser {
             System.exit(1);
         }
 
+        System.out.println("Sorting");
         logEntries.sort(Comparator.comparing(LogEntry::getRequestTime));
+
+        System.out.println("Set delay");
         fillDelay();
 
         System.out.println("Parsing logs finished");
@@ -107,6 +109,10 @@ public class LogParser {
                     String[] requestParts = request.split(" ");
                     String method = requestParts[0];
                     String endpoint = requestParts[1];
+
+                    if (method.equals("UNKOWN") || method.equals("UNKNOWN")) {
+                        return;
+                    }
 
                     Integer statusCode = getIntegerValue(getValueFromRow(csvRecord, logFormat.getStatusCodeFieldData()));
                     Float responseTime = getFloatValue(getValueFromRow(csvRecord, logFormat.getResponseTimeFieldData()));

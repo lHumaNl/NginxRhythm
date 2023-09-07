@@ -31,7 +31,7 @@ public class Main {
                 Thread.sleep(logEntry.getDelay());
                 requestExecutor.executeRequest(logEntry);
             }
-        } catch (ParseException | URISyntaxException | InterruptedException e) {
+        } catch (ParseException | URISyntaxException | InterruptedException | RuntimeException e) {
             e.printStackTrace();
         } finally {
             if (requestExecutor != null) requestExecutor.shutDown();

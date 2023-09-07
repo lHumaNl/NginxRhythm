@@ -9,9 +9,8 @@ import java.util.concurrent.*;
 
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.*;
-import org.apache.http.conn.ssl.NoopHostnameVerifier;
+import org.apache.http.conn.ssl.AllowAllHostnameVerifier;
 import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
-import org.apache.http.conn.ssl.X509HostnameVerifier;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.ssl.SSLContexts;
@@ -67,7 +66,7 @@ public class RequestExecutor {
 
                 return HttpClients.custom()
                         .setSslcontext(sslContext)
-                        .setHostnameVerifier((X509HostnameVerifier) NoopHostnameVerifier.INSTANCE)
+                        .setHostnameVerifier(new AllowAllHostnameVerifier())
                         .setDefaultRequestConfig(requestConfig)
                         .build();
             } else {
