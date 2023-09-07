@@ -2,9 +2,52 @@
 
 NginxRhythm is a utility to parse and simulate requests from an Nginx log file.
 
+## Cloning the Project from Git
+
+1. **Clone the repository**:
+   - Open your terminal or command prompt.
+   - Run the following command with your repository URL:
+
+   ```bash
+   git clone https://github.com/lHumaNl/NginxRhythm.git
+   
+2. **Navigate to the project directory**:
+   ```bash
+   cd path/to/your/project
+
 ## Prerequisites
 
 - Java 8 or newer.
+
+## Building the Project
+
+### Building with IntelliJ IDEA
+
+1. **Open the Project**:
+    - Start IntelliJ IDEA.
+    - Click on `File` > `Open`.
+    - Navigate to the project directory and select the `pom.xml` file.
+    - Click `OK` to open the project.
+
+2. **Build the Project**:
+   - Open the `Maven` tool window (usually located on the right side of the IDE).
+   - Expand the project's tree to see the `Lifecycle` section.
+   - Double-click on `clean` to clean the project, and then on `install` to build the project.
+   - After building, the fat-jar `NginxRhythm-{version}.jar` will appear in the `target` directory.
+
+### Building with Maven CLI
+
+1. **Navigate to the Project Directory**:
+    - Open your terminal or command prompt.
+    - Navigate to the project directory using the `cd` command.
+
+   ```bash
+   cd path/to/your/project
+
+2. **Run the following command**:
+    ```bash
+   mvn clean install
+3. **After building, the fat-jar `NginxRhythm-{version}.jar` will appear in the `target` directory**
 
 ## Usage
 
@@ -13,7 +56,8 @@ java -jar NginxRhythm.jar [options]
 ## Options
 
 - `--nginxLogPath <path>`: **(Required)** Path to the Nginx log file.
-- `--logFormat <format>`: Format of the Nginx log structure. Default is `"[$requestTime]" "$requestUrl" "$statusCode" "$refererHeader" "$userAgentHeader" "$destinationHost" "$responseTime"`.
+- `--logFormat <format>`: Format of the Nginx log structure. Default
+  is `"[$requestTime]" "$requestUrl" "$statusCode" "$refererHeader" "$userAgentHeader" "$destinationHost" "$responseTime"`.
 - `--formatTime <format>`: Nginx log time format. Default is `dd/MMM/yyyy:HH:mm:ss Z`.
 - `--destinationHost <host>`: Host to send requests to.
 - `--httpProtocol <protocol>`: HTTP protocol for requests. Default is `https`.
@@ -32,6 +76,7 @@ java -jar NginxRhythm.jar [options]
 - `-h`, `--help`: Display help for the command.
 
 ## Vars in log format
+
 - `$requestTime`: **(Required)** Time of request.
 - `$requestUrl`: **(Required)** HTTP method and endpoint.
 - `$statusCode`: Status code.
@@ -50,7 +95,8 @@ java -jar NginxRhythm.jar --nginxLogPath /path/to/nginx.log --destinationHost ex
 
 Replay the logs from a specific timestamp with a custom log format:
 
-java -jar NginxRhythm.jar --nginxLogPath /path/to/nginx.log --startTimestamp 1691387480000 --logFormat "[$requestTime] $requestUrl"
+java -jar NginxRhythm.jar --nginxLogPath /path/to/nginx.log --startTimestamp 1691387480000 --logFormat "[$requestTime]
+$requestUrl"
 
 ## Contributing
 
