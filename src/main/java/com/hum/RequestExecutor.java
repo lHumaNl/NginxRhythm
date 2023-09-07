@@ -20,8 +20,7 @@ import org.apache.logging.log4j.Logger;
 import javax.net.ssl.SSLContext;
 
 public class RequestExecutor {
-
-    private static final Logger logger = LogManager.getLogger();
+    private static final Logger logger = LogManager.getLogger(RequestExecutor.class);
     private final DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("dd/MM/yyyy-HH:mm:ss");
     private final Integer scaleLoadWholePart;
     private final Float fractionalPart;
@@ -33,9 +32,9 @@ public class RequestExecutor {
         this.requestExecutor = new ThreadPoolExecutor(
                 requestThreads,
                 requestThreads,
-                60L,
+                120L,
                 TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>()
+                new LinkedBlockingQueue<>(250)
         );
 
         this.httpClient = getHttpClient(timeout, ignoreSsl);
@@ -146,5 +145,4 @@ public class RequestExecutor {
             throw new RuntimeException(e);
         }
     }
-
 }

@@ -47,7 +47,15 @@ public class Arguments {
         this.formatTime = cmd.hasOption("formatTime") ? DateTimeFormatter.ofPattern(cmd.getOptionValue("formatTime"), Locale.ENGLISH) : DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss Z", Locale.ENGLISH);
         this.destinationHost = cmd.hasOption("destinationHost") ? cmd.getOptionValue("destinationHost") : null;
         this.httpProtocol = cmd.hasOption("httpProtocol") ? cmd.getOptionValue("httpProtocol") : "https";
-        Path resultFilePath = cmd.hasOption("resultFilePath") ? Paths.get(cmd.getOptionValue("resultFilePath")) : Paths.get("nginx.log");
+
+        String defaultLogName;
+        if (this.destinationHost != null) {
+            defaultLogName = this.destinationHost.replace("https://", "").replace("http://", "") + "-nginx.log";
+        } else {
+            defaultLogName = "nginx.log";
+        }
+
+        Path resultFilePath = cmd.hasOption("resultFilePath") ? Paths.get(cmd.getOptionValue("resultFilePath")) : Paths.get(defaultLogName);
         this.speed = cmd.hasOption("speed") ? Float.parseFloat(cmd.getOptionValue("speed")) : null;
         this.scaleLoad = cmd.hasOption("scaleLoad") ? Float.parseFloat(cmd.getOptionValue("scaleLoad")) : null;
         this.startTimestamp = cmd.hasOption("startTimestamp") ? Long.parseLong(cmd.getOptionValue("startTimestamp")) : null;
