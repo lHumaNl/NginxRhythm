@@ -1,4 +1,4 @@
-package com.hum;
+package com.hum.logparsing.models;
 
 import org.apache.http.client.methods.*;
 
@@ -111,6 +111,7 @@ public class LogEntry {
                 throw new RuntimeException(ex);
             }
         }
+
         return uri;
     }
 }

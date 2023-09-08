@@ -1,8 +1,13 @@
-package com.hum;
+package com.hum.logparsing;
 
+import com.hum.logparsing.models.FieldData;
+import com.hum.logparsing.models.LogEntry;
+import com.hum.logparsing.models.LogFormat;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.CharArrayReader;
 import java.io.IOException;
@@ -18,6 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class LogParser {
+    private static final Logger LOGGER = LogManager.getLogger(LogParser.class);
     private final Path filePath;
     private final String logFormat;
     private final Long startTimestamp;
@@ -45,30 +51,40 @@ public class LogParser {
     }
 
     private void parseLog() throws RuntimeException {
-        Reader reader;
-        CSVParser csvParser;
-        CSVParser formatLogParser;
-        CSVRecord logFormatFields;
+        try (Reader reader = Files.newBufferedReader(filePath, StandardCharsets.UTF_8);
+             CSVParser csvParser = new CSVParser(reader,
+                     CSVFormat.DEFAULT.withDelimiter(' ')
+                             .withQuote('"')
+                             .withNullString("-")
+                             .withIgnoreSurroundingSpaces()
+             );
 
-        try {
-            reader = Files.newBufferedReader(filePath, StandardCharsets.UTF_8);
-            csvParser = new CSVParser(reader, CSVFormat.DEFAULT.withDelimiter(' ').withQuote('"').withNullString("-").withIgnoreSurroundingSpaces());
-            formatLogParser = new CSVParser(new CharArrayReader(this.logFormat.toCharArray()), CSVFormat.DEFAULT.withDelimiter(' ').withQuote('"').withNullString("-").withIgnoreSurroundingSpaces());
-            logFormatFields = formatLogParser.getRecords().get(0);
+             CSVParser formatLogParser = new CSVParser(new CharArrayReader(
+                     this.logFormat.toCharArray()),
+                     CSVFormat.DEFAULT
+                             .withDelimiter(' ')
+                             .withQuote('"')
+                             .withNullString("-")
+                             .withIgnoreSurroundingSpaces()
+             )
+        ) {
+
+            CSVRecord logFormatFields = formatLogParser.getRecords().get(0);
+            LogFormat logFormat = new LogFormat(logFormatFields);
+
+            System.out.println("Start parsing logs");
+            fillLogEntries(csvParser, logFormat);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            LOGGER.error("An error occurred when parsing log: ", e);
+            throw new RuntimeException();
         }
-
-        LogFormat logFormat = new LogFormat(logFormatFields);
-
-        System.out.println("Start parsing logs");
-        fillLogEntries(csvParser, logFormat);
 
         executor.shutdown();
         try {
             if (!executor.awaitTermination(120, TimeUnit.SECONDS)) {
                 executor.shutdownNow();
-                System.err.println("Shutdown threads is to long");
+                LOGGER.error("Shutdown threads is to long:");
+                System.err.println();
                 System.exit(1);
             }
         } catch (InterruptedException e) {
@@ -91,20 +107,15 @@ public class LogParser {
             executor.execute(() -> {
                 try {
                     String dateString = getValueFromRow(csvRecord, logFormat.getRequestTimeFieldData());
-                    if (dateString == null) throw new RuntimeException();
+                    if (dateString == null) return;
 
                     long requestTime = ZonedDateTime.parse(dateString, dateFormat).toInstant().getEpochSecond();
-
-                    if (startTimestamp != null) {
-                        if (requestTime < startTimestamp) {
-                            return;
-                        }
-                    }
+                    if (startTimestamp != null && requestTime < startTimestamp) return;
 
                     String request = getValueFromRow(csvRecord, logFormat.getRequestUrlFieldData());
 
                     if (request == null || (request.split(" ").length < 2)) {
-                        throw new RuntimeException();
+                        return;
                     }
 
                     String[] requestParts = request.split(" ");
@@ -142,7 +153,8 @@ public class LogParser {
 
                     logEntries.add(logEntry);
                 } catch (Exception e) {
-                    throw new RuntimeException(e);
+                    LOGGER.error("An error occurred: ", e);
+                    throw new RuntimeException();
                 }
             });
         }

@@ -30,74 +30,98 @@ public class Arguments {
     private final int requestQueueCapacity;
     private final RejectedExecutionHandler queuePolicy;
     private final boolean ignoreSsl;
+    private final boolean closeConnectionAfterFirstByte;
     private final String username;
     private final String password;
 
     public Arguments(String[] args) throws ParseException, URISyntaxException {
         Options options = getOptions();
-
         CommandLine cmd = new DefaultParser().parse(options, args);
 
         if (cmd.hasOption("h") || cmd.hasOption("help")) {
-            HelpFormatter formatter = new HelpFormatter();
-            formatter.printHelp("NginxRhythm", options);
-            System.exit(0);
+            displayHelpAndExit(options);
         }
 
-        String defaultFormatTime = "\"[$requestTime]\" \"$requestUrl\" \"$statusCode\" \"$refererHeader\" \"$userAgentHeader\" \"$destinationHost\" \"$responseTime\"";
-
-        this.nginxLogPath = Paths.get(cmd.getOptionValue("nginxLogPath"));
-        this.logFormat = cmd.hasOption("logFormat") ? cmd.getOptionValue("logFormat") : defaultFormatTime;
-        this.formatTime = cmd.hasOption("formatTime") ? DateTimeFormatter.ofPattern(cmd.getOptionValue("formatTime"), Locale.ENGLISH) : DateTimeFormatter.ofPattern("dd/MMM/yyyy:HH:mm:ss Z", Locale.ENGLISH);
-        this.destinationHost = cmd.hasOption("destinationHost") ? cmd.getOptionValue("destinationHost") : null;
-        this.httpProtocol = cmd.hasOption("httpProtocol") ? cmd.getOptionValue("httpProtocol") : "https";
-
-        String defaultLogName;
-        if (this.destinationHost != null) {
-            defaultLogName = this.destinationHost.replace("https://", "").replace("http://", "") + "-nginx.log";
-        } else {
-            defaultLogName = "nginx.log";
-        }
-
-        Path resultFilePath = cmd.hasOption("resultFilePath") ? Paths.get(cmd.getOptionValue("resultFilePath")) : Paths.get(defaultLogName);
-        this.speed = cmd.hasOption("speed") ? Float.parseFloat(cmd.getOptionValue("speed")) : null;
-        this.scaleLoad = cmd.hasOption("scaleLoad") ? Float.parseFloat(cmd.getOptionValue("scaleLoad")) : null;
-        this.startTimestamp = cmd.hasOption("startTimestamp") ? Long.parseLong(cmd.getOptionValue("startTimestamp")) : null;
-        this.timeout = cmd.hasOption("timeout") ? Integer.parseInt(cmd.getOptionValue("timeout")) : 30;
-        this.parserThreads = cmd.hasOption("parserThreads") ? Integer.parseInt(cmd.getOptionValue("parserThreads")) : Math.max(Runtime.getRuntime().availableProcessors(), 16);
-        this.requestsThreads = cmd.hasOption("requestsThreads") ? Integer.parseInt(cmd.getOptionValue("requestsThreads")) : Math.max(Runtime.getRuntime().availableProcessors(), 16);
-        this.requestQueueCapacity = cmd.hasOption("requestQueueCapacity") ? Integer.parseInt(cmd.getOptionValue("requestQueueCapacity")) : 1000;
-
-        int queuePolicy = cmd.hasOption("queuePolicy") ? Integer.parseInt(cmd.getOptionValue("queuePolicy")) : 1;
-
-        if (queuePolicy == 0) {
-            this.queuePolicy = new ThreadPoolExecutor.AbortPolicy();
-        } else if (queuePolicy == 1) {
-            this.queuePolicy = new ThreadPoolExecutor.CallerRunsPolicy();
-        } else if (queuePolicy == 2) {
-            this.queuePolicy = new ThreadPoolExecutor.DiscardPolicy();
-        } else if (queuePolicy == 3) {
-            this.queuePolicy = new ThreadPoolExecutor.DiscardOldestPolicy();
-        } else {
-            throw new RuntimeException("Invalid queue policy");
-        }
-
+        this.nginxLogPath = Paths.get(getOptionValue(cmd, "nginxLogPath", true));
+        this.logFormat = getOptionValue(cmd, "logFormat", false, "\"[$requestTime]\" \"$requestUrl\" \"$statusCode\" \"$refererHeader\" \"$userAgentHeader\" \"$destinationHost\" \"$responseTime\"");
+        this.formatTime = DateTimeFormatter.ofPattern(getOptionValue(cmd, "formatTime", false, "dd/MMM/yyyy:HH:mm:ss Z"), Locale.ENGLISH);
+        this.destinationHost = getOptionValue(cmd, "destinationHost", false, null);
+        this.httpProtocol = getOptionValue(cmd, "httpProtocol", false, "https");
+        this.speed = Float.valueOf(getOptionValue(cmd, "speed", false, "1.0"));
+        this.scaleLoad = Float.valueOf(getOptionValue(cmd, "scaleLoad", false, "1.0"));
+        String startTimestamp = getOptionValue(cmd, "startTimestamp", false, null);
+        this.startTimestamp = startTimestamp != null ? Long.valueOf(startTimestamp) : null;
+        this.timeout = Integer.parseInt(getOptionValue(cmd, "timeout", false, "30"));
+        this.parserThreads = Integer.parseInt(getOptionValue(cmd, "parserThreads", false, String.valueOf(Math.max(Runtime.getRuntime().availableProcessors(), 16))));
+        this.requestsThreads = Integer.parseInt(getOptionValue(cmd, "requestsThreads", false, String.valueOf(Math.max(Runtime.getRuntime().availableProcessors(), 16))));
+        this.requestQueueCapacity = Integer.parseInt(getOptionValue(cmd, "requestQueueCapacity", false, "1000"));
+        this.queuePolicy = determineQueuePolicy(cmd);
         this.ignoreSsl = cmd.hasOption("ignoreSsl");
-        this.username = cmd.hasOption("username") ? cmd.getOptionValue("username") : null;
-        this.password = cmd.hasOption("password") ? cmd.getOptionValue("password") : null;
+        this.closeConnectionAfterFirstByte = cmd.hasOption("closeConnectionAfterFirstByte");
+        this.username = getOptionValue(cmd, "username", false, null);
+        this.password = getOptionValue(cmd, "password", false, null);
 
-        System.setProperty("logFilePath", resultFilePath.toString());
+        String defaultLogPath = this.destinationHost != null ? this.destinationHost
+                .replace("https://", "")
+                .replace("http://", "") + "-nginx.log" : "nginx.log";
+        String errorLogPath = Paths.get("errors-" + defaultLogPath).toString();
+        String resultFilePath = Paths.get(getOptionValue(cmd, "resultFilePath", false, defaultLogPath)).toString();
+
+        System.setProperty("logFilePath", resultFilePath);
+        System.setProperty("errorLogFilePath", errorLogPath);
 
         if (cmd.hasOption("disableWriteToFile")) {
             System.setProperty("fileLogLevel", "OFF");
+            System.setProperty("errorFileLogLevel", "OFF");
         } else {
             System.setProperty("fileLogLevel", "INFO");
+            System.setProperty("errorFileLogLevel", "ERROR");
         }
 
         if (cmd.hasOption("disableStats")) {
-            System.setProperty("consoleLogLevel", "OFF");
+            System.setProperty("consoleLogLevel", "ERROR");
         } else {
             System.setProperty("consoleLogLevel", "INFO");
+        }
+    }
+
+    private String getStringForRequiredArg(String arg) {
+        return "Required arg \"" + arg + "\" missed!";
+    }
+
+    private void displayHelpAndExit(Options options) {
+        HelpFormatter formatter = new HelpFormatter();
+        formatter.printHelp("NginxRhythm", options);
+        System.exit(0);
+    }
+
+    private String getOptionValue(CommandLine cmd, String option, boolean required, String defaultValue) {
+        if (cmd.hasOption(option)) {
+            return cmd.getOptionValue(option);
+        } else if (required) {
+            throw new IllegalArgumentException(getStringForRequiredArg(option));
+        } else {
+            return defaultValue;
+        }
+    }
+
+    private String getOptionValue(CommandLine cmd, String option, boolean required) {
+        return getOptionValue(cmd, option, required, null);
+    }
+
+    private RejectedExecutionHandler determineQueuePolicy(CommandLine cmd) {
+        int queuePolicy = Integer.parseInt(getOptionValue(cmd, "queuePolicy", false, "1"));
+        switch (queuePolicy) {
+            case 0:
+                return new ThreadPoolExecutor.AbortPolicy();
+            case 1:
+                return new ThreadPoolExecutor.CallerRunsPolicy();
+            case 2:
+                return new ThreadPoolExecutor.DiscardPolicy();
+            case 3:
+                return new ThreadPoolExecutor.DiscardOldestPolicy();
+            default:
+                throw new RuntimeException("Invalid queue policy");
         }
     }
 
@@ -163,6 +187,10 @@ public class Arguments {
         Option ignoreSsl = new Option(null, "ignoreSsl", false, "Ignore SSL (default: false)");
         ignoreSsl.setRequired(false);
         options.addOption(ignoreSsl);
+
+        Option closeConnectionAfterFirstByte = new Option(null, "closeConnectionAfterFirstByte", false, "Close connection with host after getting first byte (default: false)");
+        closeConnectionAfterFirstByte.setRequired(false);
+        options.addOption(closeConnectionAfterFirstByte);
 
         Option disableStats = new Option(null, "disableStats", false, "Disable display the execution progress in the console (default: false)");
         disableStats.setRequired(false);
@@ -241,6 +269,10 @@ public class Arguments {
 
     public boolean isIgnoreSsl() {
         return ignoreSsl;
+    }
+
+    public boolean isCloseConnectionAfterFirstByte() {
+        return closeConnectionAfterFirstByte;
     }
 
     public String getUsername() {

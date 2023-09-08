@@ -1,4 +1,4 @@
-package com.hum;
+package com.hum.logparsing.models;
 
 
 import org.apache.commons.csv.CSVRecord;

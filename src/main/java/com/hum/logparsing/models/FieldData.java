@@ -1,4 +1,4 @@
-package com.hum;
+package com.hum.logparsing.models;
 
 public class FieldData {
     private final String fieldVar;

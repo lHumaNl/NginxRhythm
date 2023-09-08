@@ -72,6 +72,7 @@ java -jar NginxRhythm.jar [options]
 - `--queuePolicy <count>`: Policy of request queue (AbortPolicy: `0`, CallerRunsPolicy: `1`, DiscardPolicy: `2`,
   DiscardOldestPolicy: `3`). Default `1`.
 - `--ignoreSsl`: If specified, will ignore SSL. Default is `false`.
+- `--closeConnectionAfterFirstByte`: If specified, will close connection with host after getting first byte. Default is `false`.
 - `--disableStats`: If specified, will disable displaying the execution progress in the console. Default is `false`.
 - `--disableWriteToFile`: If specified, will disable writing results to file. Default is `false`.
 - `--username <username>`: Username for basic authentication.

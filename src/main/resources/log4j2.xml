@@ -2,13 +2,21 @@
     <Appenders>
         <File name="FileAppender" fileName="${sys:logFilePath}" ignoreExceptions="false">
             <Filters>
-                <ThresholdFilter level="${sys:fileLogLevel}" onMatch="ACCEPT" onMismatch="DENY" />
+                <LevelRangeFilter minLevel="${sys:fileLogLevel}" maxLevel="${sys:fileLogLevel}" onMatch="ACCEPT"
+                                  onMismatch="DENY"/>
             </Filters>
             <PatternLayout pattern="%msg%n"/>
         </File>
+        <File name="ErrorFileAppender" fileName="${sys:errorLogFilePath}" ignoreExceptions="false">
+            <Filters>
+                <LevelRangeFilter minLevel="${sys:errorFileLogLevel}" maxLevel="${sys:errorFileLogLevel}"
+                                  onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss}: %msg%n"/>
+        </File>
         <Console name="ConsoleAppender" target="SYSTEM_OUT">
             <Filters>
-                <ThresholdFilter level="${sys:consoleLogLevel}" onMatch="ACCEPT" onMismatch="DENY" />
+                <ThresholdFilter level="${sys:consoleLogLevel}" onMatch="ACCEPT" onMismatch="DENY"/>
             </Filters>
             <PatternLayout pattern="%msg%n"/>
         </Console>
@@ -16,6 +24,7 @@
     <Loggers>
         <Root level="info">
             <AppenderRef ref="FileAppender"/>
+            <AppenderRef ref="ErrorFileAppender"/>
             <AppenderRef ref="ConsoleAppender"/>
         </Root>
     </Loggers>
