@@ -65,10 +65,11 @@ java -jar NginxRhythm.jar [options]
 - `--speed <factor>`: Acceleration/deceleration of request sending speed. For example: `2`, `0.5`. Default is `1`.
 - `--scaleLoad <factor>`: Scale load. Default is `1.0`.
 - `--startTimestamp <timestamp>`: Start replaying the log from a specific timestamp.
-- `--timeout <seconds>`: Timeout for the requests in seconds. Default is `30`.
-- `--parserThreads <count>`: Count of parser threads. Default is the higher of available processor cores or `16`.
-- `--requestsThreads <count>`: Count of request threads. Default is the higher of available processor cores or `16`.
-- `--requestQueueCapacity <count>`: Capacity of request queue. Default is `1000`.
+- `--connectTimeout <seconds>`: Connect timeout for the requests in seconds. Default is `1`.
+- `--socketTimeout <seconds>`: Socket timeout for the requests in seconds. Default is `10`.
+- `--parserThreads <count>`: Count of parser threads. Default is the higher of available processor cores minus 1 (1 for main thread).
+- `--requestsThreads <count>`: Count of request threads. Default is the higher of available processor cores minus 1 (1 for main thread).
+- `--requestQueueCapacity <count>`: Capacity of request queue. Default is `100`.
 - `--queuePolicy <count>`: Policy of request queue (AbortPolicy: `0`, CallerRunsPolicy: `1`, DiscardPolicy: `2`,
   DiscardOldestPolicy: `3`). Default `1`.
 - `--ignoreSsl`: If specified, will ignore SSL. Default is `false`.

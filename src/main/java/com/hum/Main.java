@@ -3,6 +3,7 @@ package com.hum;
 import com.hum.logparsing.LogParser;
 import com.hum.logparsing.models.LogEntry;
 import com.hum.requestexecutor.RequestExecutor;
+import com.hum.requestexecutor.models.RequestExecutorSetup;
 import org.apache.commons.cli.ParseException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -10,8 +11,6 @@ import org.apache.logging.log4j.Logger;
 import java.net.URISyntaxException;
 
 public class Main {
-
-
     public static void main(String[] args) {
         Arguments arguments;
         LogParser logParser;
@@ -45,13 +44,16 @@ public class Main {
 
     private static RequestExecutor initializeRequestExecutor(Arguments arguments) {
         return new RequestExecutor(
-                arguments.getScaleLoad(),
-                arguments.getRequestsThreads(),
-                arguments.getTimeout(),
-                arguments.isIgnoreSsl(),
-                arguments.getRequestQueueCapacity(),
-                arguments.getQueuePolicy(),
-                arguments.isCloseConnectionAfterFirstByte()
+                new RequestExecutorSetup(
+                        arguments.getScaleLoad(),
+                        arguments.getRequestsThreads(),
+                        arguments.getConnectTimeout(),
+                        arguments.getSocketTimeout(),
+                        arguments.isIgnoreSsl(),
+                        arguments.getRequestQueueCapacity(),
+                        arguments.getQueuePolicy(),
+                        arguments.isCloseConnectionAfterFirstByte()
+                )
         );
     }
 
@@ -60,6 +62,7 @@ public class Main {
 
         for (LogEntry logEntry : logParser.getLogEntries()) {
             Thread.sleep(logEntry.getDelay());
+
             try {
                 requestExecutor.executeRequest(logEntry);
             } catch (Exception e) {

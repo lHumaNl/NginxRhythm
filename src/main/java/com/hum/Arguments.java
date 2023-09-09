@@ -24,7 +24,8 @@ public class Arguments {
     private final Float speed;
     private final Float scaleLoad;
     private final Long startTimestamp;
-    private final int timeout;
+    private final int connectTimeout;
+    private final int socketTimeout;
     private final Integer parserThreads;
     private final Integer requestsThreads;
     private final int requestQueueCapacity;
@@ -51,10 +52,11 @@ public class Arguments {
         this.scaleLoad = Float.valueOf(getOptionValue(cmd, "scaleLoad", false, "1.0"));
         String startTimestamp = getOptionValue(cmd, "startTimestamp", false, null);
         this.startTimestamp = startTimestamp != null ? Long.valueOf(startTimestamp) : null;
-        this.timeout = Integer.parseInt(getOptionValue(cmd, "timeout", false, "30"));
-        this.parserThreads = Integer.parseInt(getOptionValue(cmd, "parserThreads", false, String.valueOf(Math.max(Runtime.getRuntime().availableProcessors(), 16))));
-        this.requestsThreads = Integer.parseInt(getOptionValue(cmd, "requestsThreads", false, String.valueOf(Math.max(Runtime.getRuntime().availableProcessors(), 16))));
-        this.requestQueueCapacity = Integer.parseInt(getOptionValue(cmd, "requestQueueCapacity", false, "1000"));
+        this.connectTimeout = Integer.parseInt(getOptionValue(cmd, "connectTimeout", false, "1"));
+        this.socketTimeout = Integer.parseInt(getOptionValue(cmd, "socketTimeout", false, "10"));
+        this.parserThreads = Integer.parseInt(getOptionValue(cmd, "parserThreads", false, String.valueOf(Runtime.getRuntime().availableProcessors() - 1)));
+        this.requestsThreads = Integer.parseInt(getOptionValue(cmd, "requestsThreads", false, String.valueOf(Runtime.getRuntime().availableProcessors() - 1)));
+        this.requestQueueCapacity = Integer.parseInt(getOptionValue(cmd, "requestQueueCapacity", false, "100"));
         this.queuePolicy = determineQueuePolicy(cmd);
         this.ignoreSsl = cmd.hasOption("ignoreSsl");
         this.closeConnectionAfterFirstByte = cmd.hasOption("closeConnectionAfterFirstByte");
@@ -164,19 +166,23 @@ public class Arguments {
         startTimestamp.setRequired(false);
         options.addOption(startTimestamp);
 
-        Option timeout = new Option(null, "timeout", true, "Timeout for the requests (default: 30)");
-        timeout.setRequired(false);
-        options.addOption(timeout);
+        Option connectTimeout = new Option(null, "connectTimeout", true, "Connect timeout for the requests (default: 1)");
+        connectTimeout.setRequired(false);
+        options.addOption(connectTimeout);
 
-        Option parserThreads = new Option(null, "parserThreads", true, "Count of parser threads (default: Max cores count or 16)");
+        Option socketTimeout = new Option(null, "socketTimeout", true, "Socket timeout for the requests (default: 10)");
+        socketTimeout.setRequired(false);
+        options.addOption(socketTimeout);
+
+        Option parserThreads = new Option(null, "parserThreads", true, "Count of parser threads (default: Max cores count - 1)");
         parserThreads.setRequired(false);
         options.addOption(parserThreads);
 
-        Option requestsThreads = new Option(null, "requestsThreads", true, "Count of requests threads (default: Max cores count or 16)");
+        Option requestsThreads = new Option(null, "requestsThreads", true, "Count of requests threads (default: Max cores count - 1)");
         requestsThreads.setRequired(false);
         options.addOption(requestsThreads);
 
-        Option requestQueueCapacity = new Option(null, "requestQueueCapacity", true, "Capacity of request queue (default: 1000)");
+        Option requestQueueCapacity = new Option(null, "requestQueueCapacity", true, "Capacity of request queue (default: 100)");
         requestQueueCapacity.setRequired(false);
         options.addOption(requestQueueCapacity);
 
@@ -247,8 +253,12 @@ public class Arguments {
         return startTimestamp;
     }
 
-    public int getTimeout() {
-        return timeout;
+    public int getConnectTimeout() {
+        return connectTimeout;
+    }
+
+    public int getSocketTimeout() {
+        return socketTimeout;
     }
 
     public Integer getParserThreads() {

@@ -10,7 +10,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.CharArrayReader;
-import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,9 +17,7 @@ import java.nio.file.Path;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 public class LogParser {
     private static final Logger LOGGER = LogManager.getLogger(LogParser.class);
@@ -30,7 +27,7 @@ public class LogParser {
     private final String destinationHost;
     private final String httpProtocol;
     private final DateTimeFormatter dateFormat;
-    private final ExecutorService executor;
+    private final ThreadPoolExecutor executor;
     private final List<LogEntry> logEntries;
 
     public LogParser(Path filePath, String logFormat, DateTimeFormatter formatTime, Long startTimestamp, String destinationHost, String httpProtocol, int parserThreads) throws RuntimeException {
@@ -40,10 +37,21 @@ public class LogParser {
         this.destinationHost = destinationHost;
         this.httpProtocol = httpProtocol;
         this.dateFormat = formatTime;
-        this.executor = Executors.newFixedThreadPool(parserThreads);
+        this.executor = initRequestExecutor(parserThreads);
         logEntries = Collections.synchronizedList(new ArrayList<>());
 
         parseLog();
+    }
+
+    private ThreadPoolExecutor initRequestExecutor(int parserThreads) {
+        return new ThreadPoolExecutor(
+                parserThreads,
+                parserThreads,
+                0,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(250),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
     }
 
     public List<LogEntry> getLogEntries() {
@@ -74,11 +82,25 @@ public class LogParser {
 
             System.out.println("Start parsing logs");
             fillLogEntries(csvParser, logFormat);
-        } catch (IOException e) {
+        } catch (Exception e) {
             LOGGER.error("An error occurred when parsing log: ", e);
             throw new RuntimeException();
         }
 
+        System.out.println("Stopping parser threads");
+        shutDownExecutor();
+
+        System.out.println("Sorting");
+        logEntries.sort(Comparator.comparing(LogEntry::getRequestTime));
+
+        System.out.println("Set delay");
+        fillDelay();
+
+        System.out.println("Parsing logs finished");
+        System.out.println("Count of requests to execute: " + logEntries.size());
+    }
+
+    private void shutDownExecutor(){
         executor.shutdown();
         try {
             if (!executor.awaitTermination(120, TimeUnit.SECONDS)) {
@@ -91,15 +113,6 @@ public class LogParser {
             executor.shutdownNow();
             System.exit(1);
         }
-
-        System.out.println("Sorting");
-        logEntries.sort(Comparator.comparing(LogEntry::getRequestTime));
-
-        System.out.println("Set delay");
-        fillDelay();
-
-        System.out.println("Parsing logs finished");
-        System.out.println("Count of requests to execute: " + logEntries.size());
     }
 
     private void fillLogEntries(CSVParser csvParser, LogFormat logFormat) {
